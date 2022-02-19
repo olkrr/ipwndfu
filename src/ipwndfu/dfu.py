@@ -5,9 +5,10 @@ import time
 from contextlib import suppress
 from typing import TYPE_CHECKING, Optional
 
+import usb.backend.libusb1  # type: ignore
+
 import libusbfinder
 import usb  # type: ignore
-import usb.backend.libusb1  # type: ignore
 
 if TYPE_CHECKING:
     from usb.core import Device  # type: ignore
@@ -16,7 +17,15 @@ MAX_PACKET_SIZE = 0x800
 
 
 def acquire_device(
-    timeout: float = 5.0, match: Optional[str] = None, fatal: bool = True
+    timeout: float = 5.0, match_device: Optional[str] = None
+) -> "Device":
+    device = try_acquire_device(timeout, match_device)
+    assert device
+    return device
+
+
+def try_acquire_device(
+    timeout: float = 5.0, match_device: Optional[str] = None, fatal: bool = True
 ) -> Optional["Device"]:
     """Creates a connection to a given device and gets basic state.
 
@@ -24,7 +33,7 @@ def acquire_device(
     ----------
     timeout : float
         How long to wait before aborting the operation
-    match : str
+    match_device : str
         A string that must match the serial number string to select specific devices
     fatal : bool
         If a failure to acquire the device should exit the program
@@ -40,7 +49,7 @@ def acquire_device(
         for device in usb.core.find(
             find_all=True, idVendor=0x5AC, idProduct=0x1227, backend=backend
         ):
-            if match is not None and match not in device.serial_number:
+            if match_device is not None and match_device not in device.serial_number:
                 continue
             return device
         time.sleep(0.001)
@@ -57,7 +66,7 @@ def release_device(device: "Device") -> None:
     usb.util.dispose_resources(device)
 
 
-def reset_counters(device: "Device"):
+def reset_counters(device: "Device") -> None:
     assert device.ctrl_transfer(0x21, 4, 0, 0, 0, 1000) == 0
 
 
@@ -67,7 +76,7 @@ def usb_reset(device: "Device") -> None:
         device.reset()
 
 
-def send_data(device: "Device", data: bytes):
+def send_data(device: "Device", data: bytes) -> None:
     """Send a payload to the device."""
     index = 0
     while index < len(data):
@@ -91,7 +100,7 @@ def get_data(device: "Device", amount: int) -> bytes:
     return data
 
 
-def request_image_validation(device: "Device"):
+def request_image_validation(device: "Device") -> None:
     assert device.ctrl_transfer(0x21, 1, 0, 0, "", 1000) == 0
     device.ctrl_transfer(0xA1, 3, 0, 0, 6, 1000)
     device.ctrl_transfer(0xA1, 3, 0, 0, 6, 1000)

@@ -1,16 +1,22 @@
 import binascii
+import contextlib
 import dataclasses
 import datetime
 import hashlib
 import struct
 import sys
 import time
+import typing
 from contextlib import suppress
+from typing import TYPE_CHECKING
 
 import usb  # type: ignore
 from ipwndfu import dfu, image3, recovery, utilities
 
-EXEC_MAGIC = "exec"[::-1]
+if TYPE_CHECKING:
+    from usb.core import Device  # type: ignore
+
+EXEC_MAGIC = b"exec"
 AES_BLOCK_SIZE = 16
 AES_GID_KEY = 0x20000200
 AES_UID_KEY = 0x20000201
@@ -84,7 +90,11 @@ configs = [
 
 
 class PwnedDFUDevice:
-    def __init__(self):
+    device: "Device"
+    identifier: str
+    config: PwnedDeviceConfig
+
+    def __init__(self) -> None:
         device = dfu.acquire_device()
         self.identifier = device.serial_number
         dfu.release_device(device)
@@ -101,7 +111,6 @@ class PwnedDFUDevice:
             )
             sys.exit(1)
 
-        self.config = None
         for config in configs:
             if f"SRTG:[iBoot-{config.version}]" in self.identifier:
                 self.config = config
@@ -112,7 +121,7 @@ class PwnedDFUDevice:
             )
             sys.exit(1)
 
-    def ecid_string(self):
+    def ecid_string(self) -> str:
         tokens = self.identifier.split()
         for token in tokens:
             if token.startswith("ECID:"):
@@ -120,7 +129,7 @@ class PwnedDFUDevice:
         print("ERROR: ECID is missing from USB serial number string.")
         sys.exit(1)
 
-    def execute(self, cmd, receive_length):
+    def execute(self, cmd: bytes, receive_length: int) -> typing.Tuple[int, bytes]:
         device = dfu.acquire_device()
         assert self.identifier == device.serial_number
 
@@ -147,7 +156,7 @@ class PwnedDFUDevice:
         assert exec_cleared == 0
         return retval, received[8 : 8 + receive_length]
 
-    def securerom_dump(self):
+    def securerom_dump(self) -> bytes:
         securerom = self.read_memory(self.config.rom_address, self.config.rom_size)
         if hashlib.sha256(securerom).hexdigest() != self.config.rom_sha256:
             print(
@@ -156,7 +165,7 @@ class PwnedDFUDevice:
             sys.exit(1)
         return securerom
 
-    def aes(self, data, action, key):
+    def aes(self, data: bytes, action: int, key: int) -> bytes:
         if len(data) % AES_BLOCK_SIZE != 0:
             print(
                 "ERROR: Length of data for AES encryption/decryption must be a multiple of %s."
@@ -178,7 +187,7 @@ class PwnedDFUDevice:
         (retval, received) = self.execute(cmd + data, len(data))
         return received[: len(data)]
 
-    def aes_hex(self, hexdata, action, key):
+    def aes_hex(self, hexdata: bytes, action: int, key: int) -> bytes:
         if len(hexdata) % 32 != 0:
             print(
                 "ERROR: Length of hex data for AES encryption/decryption must be a multiple of %s."
@@ -188,7 +197,7 @@ class PwnedDFUDevice:
 
         return binascii.hexlify(self.aes(binascii.unhexlify(hexdata), action, key))
 
-    def read_memory(self, address, length):
+    def read_memory(self, address: int, length: int) -> bytes:
         (retval, data) = self.execute(
             struct.pack(
                 "<4I",
@@ -201,7 +210,7 @@ class PwnedDFUDevice:
         )
         return data
 
-    def write_memory(self, address, data):
+    def write_memory(self, address: int, data: bytes) -> bytes:
         (retval, data) = self.execute(
             struct.pack(
                 f"<4I{len(data)}s",
@@ -215,7 +224,7 @@ class PwnedDFUDevice:
         )
         return data
 
-    def nor_dump(self, save_backup):
+    def nor_dump(self, save_backup: bool) -> bytes:
         (bdev, empty) = self.execute(
             struct.pack(
                 "<2I5s",
@@ -237,7 +246,7 @@ class PwnedDFUDevice:
 
         nor_part_size = 0x20000
         nor_parts = 8
-        nor = bytes()
+        nor_data = bytes()
         for i in range(nor_parts):
             print(f"Dumping NOR, part {i + 1}/{nor_parts}.")
             (retval, received) = self.execute(
@@ -252,17 +261,17 @@ class PwnedDFUDevice:
                 ),
                 nor_part_size,
             )
-            nor += received
+            nor_data += received
 
         if save_backup:
             date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             filename = f"nor-backups/nor-{self.ecid_string()}-{date}.dump"
             with open(filename, "wb") as f:
-                f.write(nor)
+                f.write(nor_data)
 
             print(f"NOR backed up to file: {filename}")
 
-        return nor
+        return nor_data
 
     def boot_ibss(self):
         print("Sending i_bss.")
@@ -346,7 +355,7 @@ class PwnedDFUDevice:
         recovery.send_data(device, payload)
         with suppress(usb.core.USBError):
             print("Sending run command.")
-            recovery.send_command(device, "run")
+            recovery.send_command(device, b"run")
 
         recovery.release_device(device)
         print(
@@ -358,12 +367,11 @@ class PwnedDFUDevice:
         assert len(keybag) == keybag_length
 
         keybag_filename = f"aes-keys/S5L{self.config.cpid}-firmware"
-        data = None
-        try:
-            with open(keybag_filename, "rb") as f:
-                data = f.read()
-        except IOError:
-            data = str()
+        data = bytes()
+
+        with contextlib.suppress(IOError), open(keybag_filename, "rb") as f:
+            data = f.read()
+
         assert len(data) % 2 * keybag_length == 0
 
         for i in range(0, len(data), 2 * keybag_length):

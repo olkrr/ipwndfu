@@ -6,7 +6,7 @@ import struct
 from ipwndfu import image3
 
 
-def exploit(img3, securerom):
+def exploit(img3, securerom: bytes) -> bytes:
     with open("bin/24Kpwn-shellcode.bin", "rb") as f:
         shellcode = f.read()
     max_shellcode_length = 1024

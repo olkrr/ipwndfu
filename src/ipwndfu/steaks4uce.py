@@ -5,6 +5,7 @@ import dataclasses
 import struct
 import sys
 import time
+import typing
 
 from ipwndfu import dfu
 
@@ -111,7 +112,7 @@ payload = b"\x00" * 256 + struct.pack(
 )
 
 
-def generate_shellcode(constants):
+def generate_shellcode(constants: typing.Sequence[int]) -> bytes:
     with open("bin/steaks4uce-shellcode.bin", "rb") as f:
         shellcode = f.read()
 
@@ -128,7 +129,7 @@ def generate_shellcode(constants):
     )
 
 
-def exploit():
+def exploit() -> None:
     print("*** based on steaks4uce exploit (heap overflow) by pod2g ***")
 
     device = dfu.acquire_device()

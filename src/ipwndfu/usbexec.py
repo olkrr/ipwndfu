@@ -1,6 +1,7 @@
 import platform
 import struct
 import sys
+import typing
 from typing import Tuple
 
 from ipwndfu import device_platform, dfu
@@ -11,7 +12,7 @@ class ExecConfig:
         self.info = info
         self.aes_crypto_cmd = aes_crypto_cmd
 
-    def match(self, info):
+    def is_match(self, info):
         return info == self.info[0].ljust(0x40, "\0") + self.info[1].ljust(
             0x40, "\0"
         ) + self.info[2].ljust(0x80, "\0")
@@ -70,9 +71,9 @@ configs = [
         (
             "SecureROM for t7000si, Copyright 2013, Apple Inc.",
             "RELEASE",
-            "iBoot-1992.0.0.1.19"
+            "iBoot-1992.0.0.1.19",
         ),
-        aes_crypto_cmd=0x10000DA90
+        aes_crypto_cmd=0x10000DA90,
     ),
     ExecConfig(
         (
@@ -116,120 +117,156 @@ configs = [
     ),
 ]
 
-EXEC_MAGIC = b"execexec"[::-1]
-DONE_MAGIC = b"donedone"[::-1]
-MEMC_MAGIC = b"memcmemc"[::-1]
-MEMS_MAGIC = b"memsmems"[::-1]
-if platform.system() == "Linux":
-    USB_READ_LIMIT = 0xFFF
-else:
-    USB_READ_LIMIT = 0x8000
-CMD_TIMEOUT = 5000
-AES_BLOCK_SIZE = 16
-AES_ENCRYPT = 16
-AES_DECRYPT = 17
-AES_GID_KEY = 0x20000200
-AES_UID_KEY = 0x20000201
-
 
 class PwnedUSBDevice:
-    def memset(self, address, c, length):
+    if platform.system() == "Linux":
+        USB_READ_LIMIT = 0xFFF
+    else:
+        USB_READ_LIMIT = 0x8000
+
+    EXEC_MAGIC = b"execexec"
+    DONE_MAGIC = b"donedone"
+    MEMC_MAGIC = b"memcmemc"
+    MEMS_MAGIC = b"memsmems"
+
+    CMD_TIMEOUT = 5000
+    AES_BLOCK_SIZE = 16
+    AES_ENCRYPT = 16
+    AES_DECRYPT = 17
+    AES_GID_KEY = 0x20000200
+    AES_UID_KEY = 0x20000201
+
+    config: ExecConfig
+    match_device: typing.Optional[str]
+    platform: device_platform.DevicePlatform
+
+    def __init__(self, match_device: typing.Optional[str] = None):
+        self.match_device = match_device
+
+        device = dfu.acquire_device(match_device=self.match_device)
+        self.serial_number = device.serial_number
+        dfu.release_device(device)
+
+        for dp in device_platform.all_platforms:
+            if self.serial_number.startswith(f"CPID:{dp.cpid:04x} CPRV:{dp.cprv:02x}"):
+                self.platform = dp
+                break
+        if self.platform is None:
+            print(self.serial_number)
+            print("ERROR: No matching usbexec.platform found for this device.")
+            sys.exit(1)
+
+        info = self.read_memory(self.image_base() + 0x200, 0x100).decode("ascii")
+        for config in configs:
+            if config.is_match(info):
+                self.config = config
+                break
+        if self.config is None:
+            print(info)
+            print("ERROR: No matching usbexec.config found for this image.")
+            sys.exit(1)
+
+    def memset(self, address: int, c: int, length: int) -> None:
         self.command(self.cmd_memset(address, c, length), 0)
 
-    def memcpy(self, dest, src, length):
+    def memcpy(self, dest: int, src: int, length: int) -> None:
         self.command(self.cmd_memcpy(dest, src, length), 0)
 
-    def read_memory_ptr(self, address):
+    def read_memory_ptr(self, address: int) -> bytes:
         return struct.unpack(
             f"<{self.cmd_arg_type()}", self.read_memory(address, self.cmd_arg_size())
         )[0]
 
-    def read_memory_uint8(self, address):
+    def read_memory_uint8(self, address: int) -> int:
         return struct.unpack("<B", self.read_memory(address, 1))[0]
 
-    def read_memory_uint16(self, address):
+    def read_memory_uint16(self, address: int) -> int:
         return struct.unpack("<H", self.read_memory(address, 2))[0]
 
-    def read_memory_uint32(self, address):
+    def read_memory_uint32(self, address: int) -> int:
         return struct.unpack("<I", self.read_memory(address, 4))[0]
 
-    def read_memory_uint64(self, address):
+    def read_memory_uint64(self, address: int) -> int:
         return struct.unpack("<Q", self.read_memory(address, 8))[0]
 
-    def write_memory(self, address, data):
+    def write_memory(self, address: int, data: bytes) -> None:
         self.command(
             self.cmd_memcpy(address, self.cmd_data_address(3), len(data)) + data, 0
         )
 
-    def write_memory_ptr(self, address, value):
+    def write_memory_ptr(self, address: int, value: int) -> None:
         self.write_memory(address, struct.pack(f"<{self.cmd_arg_type()}", value))
 
-    def write_memory_uint8(self, address, value):
+    def write_memory_uint8(self, address: int, value: int) -> None:
         self.write_memory(address, struct.pack("<B", value))
 
-    def write_memory_uint16(self, address, value):
+    def write_memory_uint16(self, address: int, value: int) -> None:
         self.write_memory(address, struct.pack("<H", value))
 
-    def write_memory_uint32(self, address, value):
+    def write_memory_uint32(self, address: int, value: int) -> None:
         self.write_memory(address, struct.pack("<I", value))
 
-    def write_memory_uint64(self, address, value):
+    def write_memory_uint64(self, address: int, value: int) -> None:
         self.write_memory(address, struct.pack("<Q", value))
 
-    def cmd_arg_type(self):
+    def cmd_arg_type(self) -> str:
         return "Q" if self.platform.arch == "arm64" else "I"
 
-    def cmd_arg_size(self):
+    def cmd_arg_size(self) -> int:
         return 8 if self.platform.arch == "arm64" else 4
 
-    def cmd_data_offset(self, index):
+    def cmd_data_offset(self, index: int) -> int:
         return 16 + index * self.cmd_arg_size()
 
-    def cmd_data_address(self, index):
+    def cmd_data_address(self, index: int) -> int:
         return self.load_base() + self.cmd_data_offset(index)
 
-    def cmd_memcpy(self, dest, src, length):
+    def cmd_memcpy(self, dest: int, src: int, length: int) -> bytes:
         return struct.pack(
             f"<8s8x3{self.cmd_arg_type()}",
-            MEMC_MAGIC,
+            PwnedUSBDevice.MEMC_MAGIC,
             dest,
             src,
             length,
         )
 
-    def cmd_memset(self, address, c, length):
+    def cmd_memset(self, address: int, c: int, length: int) -> bytes:
         return struct.pack(
-            f"<8s8x3{self.cmd_arg_type()}", MEMS_MAGIC, address, c, length
+            f"<8s8x3{self.cmd_arg_type()}",
+            PwnedUSBDevice.MEMS_MAGIC,
+            address,
+            c,
+            length,
         )
 
-    def load_base(self):
+    def load_base(self) -> int:
         if "SRTG:" in self.serial_number:
             return self.platform.dfu_image_base
         else:
             return self.platform.dfu_load_base
 
-    def image_base(self):
+    def image_base(self) -> int:
         if "SRTG:" in self.serial_number:
             return self.platform.rom_base
         else:
             return self.platform.dfu_image_base
 
-    def heap_base(self):
+    def heap_base(self) -> int:
         return self.platform.heap_base
 
-    def heap_offset(self):
+    def heap_offset(self) -> int:
         return self.platform.heap_offset
 
-    def trampoline_base(self):
+    def trampoline_base(self) -> int:
         return self.platform.trampoline_base
 
-    def trampoline_offset(self):
+    def trampoline_offset(self) -> int:
         return self.platform.trampoline_offset
 
-    def page_offset(self):
+    def page_offset(self) -> int:
         return self.platform.page_offset
 
-    def usb_serial_number(self, key):
+    def usb_serial_number(self, key) -> typing.Union[str, int, None]:
         for pair in self.serial_number.split(" "):
             if pair.startswith(key + ":"):
                 k, v = pair.split(":")
@@ -239,8 +276,8 @@ class PwnedUSBDevice:
                     return int(v, 16)
         return None
 
-    def aes(self, data, action, key):
-        assert len(data) % AES_BLOCK_SIZE == 0
+    def aes(self, data: bytes, action: int, key: int) -> bytes:
+        assert len(data) % PwnedUSBDevice.AES_BLOCK_SIZE == 0
         (retval, received) = self.execute(
             len(data),
             self.config.aes_crypto_cmd,
@@ -256,11 +293,12 @@ class PwnedUSBDevice:
         assert retval & 0xFFFFFFFF == 0
         return received[: len(data)]
 
-    def read_memory(self, address, length):
+    def read_memory(self, address: int, length: int) -> bytes:
         data = bytes()
         while len(data) < length:
             part_length = min(
-                length - len(data), USB_READ_LIMIT - self.cmd_data_offset(0)
+                length - len(data),
+                PwnedUSBDevice.USB_READ_LIMIT - self.cmd_data_offset(0),
             )
             response = self.command(
                 self.cmd_memcpy(
@@ -268,15 +306,15 @@ class PwnedUSBDevice:
                 ),
                 self.cmd_data_offset(0) + part_length,
             )
-            assert response[:8] == DONE_MAGIC
+            assert response[:8] == PwnedUSBDevice.DONE_MAGIC
             data += response[self.cmd_data_offset(0) :]
         return data
 
-    def command(self, request_data, response_length):
-        assert 0 <= response_length <= USB_READ_LIMIT
-        device = dfu.acquire_device(match=self.match)
+    def command(self, request_data: bytes, response_length: int) -> bytes:
+        assert 0 <= response_length <= PwnedUSBDevice.USB_READ_LIMIT
+        device = dfu.acquire_device(match_device=self.match_device)
         assert self.serial_number == device.serial_number
-        dfu.send_data(device, "\0" * 16)
+        dfu.send_data(device, b"\0" * 16)
         device.ctrl_transfer(0x21, 1, 0, 0, 0, 100)
         device.ctrl_transfer(0xA1, 3, 0, 0, 6, 100)
         device.ctrl_transfer(0xA1, 3, 0, 0, 6, 100)
@@ -284,18 +322,22 @@ class PwnedUSBDevice:
 
         # HACK
         if response_length == 0:
-            response = device.ctrl_transfer(
-                0xA1, 2, 0xFFFF, 0, response_length + 1, CMD_TIMEOUT
-            ).tobytes().decode("ascii")[1:]
+            response = (
+                device.ctrl_transfer(
+                    0xA1, 2, 0xFFFF, 0, response_length + 1, PwnedUSBDevice.CMD_TIMEOUT
+                )
+                .tobytes()
+                .decode("ascii")[1:]
+            )
         else:
             response = device.ctrl_transfer(
-                0xA1, 2, 0xFFFF, 0, response_length, CMD_TIMEOUT
+                0xA1, 2, 0xFFFF, 0, response_length, PwnedUSBDevice.CMD_TIMEOUT
             ).tobytes()
         dfu.release_device(device)
         assert len(response) == response_length
         return response
 
-    def execute(self, response_length, *args):
+    def execute(self, response_length: int, *args) -> typing.Tuple[int, bytes]:
         cmd = bytes()
         for i in range(len(args)):
             if isinstance(args[i], int):
@@ -306,38 +348,10 @@ class PwnedUSBDevice:
                 print(f"ERROR: usbexec.execute: invalid argument at position {i}")
                 sys.exit(1)
             if i == 0 and self.platform.arch != "arm64":
-                cmd += "\0" * 4
+                cmd += b"\0" * 4
         response = self.command(
-            EXEC_MAGIC + cmd, self.cmd_data_offset(0) + response_length
+            PwnedUSBDevice.EXEC_MAGIC + cmd, self.cmd_data_offset(0) + response_length
         )
         done, retval = struct.unpack("<8sQ", response[: self.cmd_data_offset(0)])
-        assert done == DONE_MAGIC
+        assert done == PwnedUSBDevice.DONE_MAGIC
         return retval, response[self.cmd_data_offset(0) :]
-
-    def __init__(self, match=None):
-        self.config = None
-        self.platform = None
-        self.match = match
-
-        device = dfu.acquire_device(match=self.match)
-        self.serial_number = device.serial_number
-        dfu.release_device(device)
-
-        for dp in device_platform.all_platforms:
-            if self.serial_number.startswith(f"CPID:{dp.cpid:04x} CPRV:{dp.cprv:02x}"):
-                self.platform = dp
-                break
-        if self.platform is None:
-            print(self.serial_number)
-            print("ERROR: No matching usbexec.platform found for this device.")
-            sys.exit(1)
-
-        info = self.read_memory(self.image_base() + 0x200, 0x100).decode("ascii")
-        for config in configs:
-            if config.match(info):
-                self.config = config
-                break
-        if self.config is None:
-            print(info)
-            print("ERROR: No matching usbexec.config found for this image.")
-            sys.exit(1)

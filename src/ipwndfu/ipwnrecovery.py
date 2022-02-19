@@ -9,7 +9,7 @@ import usb  # type: ignore
 from ipwndfu import recovery
 
 
-def print_help():
+def print_help() -> None:
     print("USAGE: ipwnrecovery [options]")
     print("Interact with an iOS device in Recovery Mode.\n")
     print("Basic options:")
@@ -37,7 +37,7 @@ if __name__ == "__main__":
         if opt == "-c":
             device = recovery.acquire_device()
             try:
-                recovery.send_command(device, arg)
+                recovery.send_command(device, arg.encode("ascii"))
             except usb.core.USBError:
                 print("WARNING: Caught USBError after running command.")
             recovery.release_device(device)
@@ -58,10 +58,10 @@ if __name__ == "__main__":
             device = recovery.acquire_device()
 
             # TODO: getenv auto-boot first and fail if it is already true.
-            recovery.send_command(device, "setenv auto-boot true")
-            recovery.send_command(device, "saveenv")
+            recovery.send_command(device, b"setenv auto-boot true")
+            recovery.send_command(device, b"saveenv")
             with suppress(usb.core.USBError):
-                recovery.send_command(device, "reboot")
+                recovery.send_command(device, b"reboot")
 
             recovery.release_device(device)
 
@@ -69,9 +69,9 @@ if __name__ == "__main__":
             device = recovery.acquire_device()
 
             # TODO: getenv debug-uarts first and fail if it is already 3.
-            recovery.send_command(device, "setenv debug-uarts 3")
-            recovery.send_command(device, "saveenv")
+            recovery.send_command(device, b"setenv debug-uarts 3")
+            recovery.send_command(device, b"saveenv")
             with suppress(usb.core.USBError):
-                recovery.send_command(device, "reboot")
+                recovery.send_command(device, b"reboot")
 
             recovery.release_device(device)

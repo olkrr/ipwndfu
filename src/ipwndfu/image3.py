@@ -3,6 +3,7 @@ from __future__ import annotations
 import binascii
 import dataclasses
 import struct
+import typing
 
 from ipwndfu.dfuexec import PwnedDFUDevice
 from ipwndfu.utilities import aes_decrypt
@@ -81,7 +82,7 @@ class Image3:
                 matches.append(tag)
         return matches
 
-    def get_keybag(self):
+    def get_keybag(self) -> typing.Optional[bytes]:
         keybags = self.get_tags("KBAG"[::-1])
         for tag in keybags:
             (kbag_type, aes_type) = struct.unpack("<2I", tag.tag_data[:8])
@@ -89,7 +90,7 @@ class Image3:
                 return tag.tag_data[8 : 8 + 48]
         return None
 
-    def get_payload(self):
+    def get_payload(self) -> bytes:
         data = self.get_tags(b"DATA"[::-1])
         if len(data) == 1:
             return data[0].tag_data

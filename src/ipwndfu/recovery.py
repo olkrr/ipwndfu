@@ -1,14 +1,19 @@
 import sys
 import time
+from typing import TYPE_CHECKING
+
+import usb.backend.libusb1  # type: ignore
 
 import libusbfinder
 import usb  # type: ignore
-import usb.backend.libusb1  # type: ignore
+
+if TYPE_CHECKING:
+    from usb.core import Device  # type: ignore
 
 MAX_PACKET_SIZE = 0x4000
 
 
-def acquire_device(timeout=10):
+def acquire_device(timeout: float = 10) -> "Device":
     backend = usb.backend.libusb1.get_backend(
         find_library=lambda x: libusbfinder.libusb1_path()
     )
@@ -25,16 +30,16 @@ def acquire_device(timeout=10):
     sys.exit(1)
 
 
-def release_device(device):
+def release_device(device: "Device") -> None:
     usb.util.dispose_resources(device)
 
 
-def send_command(device, command):
+def send_command(device: "Device", command: bytes) -> None:
     # TODO: Add assert?
-    device.ctrl_transfer(0x40, 0, 0, 0, command + "\x00", 30000)
+    device.ctrl_transfer(0x40, 0, 0, 0, command + b"\x00", 30000)
 
 
-def send_data(device, data):
+def send_data(device: "Device", data: bytes) -> None:
     assert device.ctrl_transfer(0x41, 0, 0, 0, 0, 1000) == 0
     index = 0
     while index < len(data):

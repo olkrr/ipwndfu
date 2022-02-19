@@ -7,12 +7,18 @@ import argparse
 import hashlib
 import sys
 import time
+import typing
 from collections import namedtuple
 from struct import pack
 from sys import stderr, stdout
+from typing import TYPE_CHECKING
+
+import usb.backend.libusb1  # type: ignore
+
+if TYPE_CHECKING:
+    from usb.core import Device  # type: ignore
 
 import libusbfinder
-import usb.backend.libusb1  # type: ignore
 from ipwndfu import (
     SHAtter,
     alloc8,
@@ -25,19 +31,13 @@ from ipwndfu import (
     t8012_heap_fix,
     usbexec,
 )
-from ipwndfu.dfuexec import (
-    AES_DECRYPT,
-    AES_ENCRYPT,
-    AES_GID_KEY,
-    AES_UID_KEY,
-    PwnedDFUDevice,
-)
+from ipwndfu.dfuexec import PwnedDFUDevice
 from ipwndfu.utilities import hex_dump
 
 TARGET_SOC = None
 
 
-def print_help():
+def print_help() -> None:
     print(
         """USAGE: ipwndfu [options]
 Interact with an iOS device in DFU Mode.\n
@@ -66,7 +66,7 @@ Advanced options:
     )
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(prog="ipwndfu")
 
     parser.add_argument("-p", dest="pwn", action="store_true")
@@ -107,14 +107,14 @@ def main():
     device = None
 
     if args.match_device:
-        device = dfu.acquire_device(match=args.match_device)
+        device = dfu.acquire_device(match_device=args.match_device)
 
     if args.reset:
-        dump(device, "0xDEADBEEF,0xFFFFFFF", match=args.match_device)
+        dump("0xDEADBEEF,0xFFFFFFF", match_device=args.match_device, device=device)
         sys.exit()
 
     elif args.pwn:
-        pwn(device, match_device=args.match_device)
+        pwn(device=device, match_device=args.match_device)
 
     elif args.xploit:
         xploit()
@@ -138,7 +138,7 @@ def main():
         dump(device, args.dump)
 
     elif args.hexdump:
-        hexdump(device, args.hexdump)
+        hexdump(args.hexdump, device)
 
     elif args.dump_rom:
         dump_rom(device)
@@ -176,7 +176,7 @@ def main():
 
 def pwn(device=None, match_device=None):
     if not device:
-        device = dfu.acquire_device(match=match_device)
+        device = dfu.acquire_device(match_device=match_device)
 
     serial = get_serial(device.serial_number)
     serial_number = device.serial_number
@@ -199,9 +199,9 @@ def pwn(device=None, match_device=None):
         "8012",
         "8015",
     ]:
-        checkm8.exploit(match=match_device)
+        checkm8.exploit(match_device=match_device)
     elif serial.cpid in ["7000", "8000", "8003"]:
-        checkm8.exploit_a8_a9(match=match_device)
+        checkm8.exploit_a8_a9(match_device=match_device)
     else:
         print("Found: " + serial_number, file=stderr)
         print("ERROR: This device is not supported.", file=stderr)
@@ -265,7 +265,7 @@ def send_file(device=None, filename=""):
         sys.exit(1)
 
     if not device:
-        device = dfu.acquire_device(match=TARGET_SOC)
+        device = dfu.acquire_device(match_device=TARGET_SOC)
 
     dfu.reset_counters(device)
     dfu.send_data(device, data)
@@ -305,9 +305,13 @@ def demote(device=None):
         sys.exit(1)
 
 
-def dump(device=None, dump_args="", match=None):
+def dump(
+    dump_args: str,
+    device: typing.Optional["Device"],
+    match_device: typing.Optional[str] = None,
+):
     if not device:
-        device = dfu.acquire_device()
+        device = dfu.acquire_device(match_device=match_device)
 
     arg = dump_args
     if arg.count(",") != 1:
@@ -327,14 +331,14 @@ def dump(device=None, dump_args="", match=None):
     dfu.release_device(device)
 
     if "PWND:[checkm8]" in serial_number:
-        device = usbexec.PwnedUSBDevice(match=match)
+        device = usbexec.PwnedUSBDevice(match_device=match_device)
         stdout.write(device.read_memory(address, length))
     else:
         device = PwnedDFUDevice()
         print(device.read_memory(address, length))
 
 
-def hexdump(device=None, arg=""):
+def hexdump(arg: str, device: typing.Optional["Device"] = None):
     if not device:
         device = dfu.acquire_device()
 
@@ -358,7 +362,7 @@ def hexdump(device=None, arg=""):
         device = usbexec.PwnedUSBDevice()
         memory_dump = device.read_memory(address, length)
         for line in hex_dump(memory_dump, address).splitlines():
-            print(f"{address:x}: {line[10:]}")
+            print(f"{address:x}: {line[10:]!r}")
             address += 16
     else:
         device = PwnedDFUDevice()
@@ -366,7 +370,7 @@ def hexdump(device=None, arg=""):
         print(hex_dump(memory_dump, address))
 
 
-def dump_rom(device=None):
+def dump_rom(device: typing.Optional["Device"] = None) -> None:
     if not device:
         device = dfu.acquire_device()
 
@@ -383,9 +387,9 @@ def dump_rom(device=None):
                 file=stderr,
             )
             sys.exit(1)
-        chip = securerom[0x200:0x240].split(" ")[2][:-1]
-        kind = securerom[0x240:0x280].split("\0")[0]
-        version = securerom[0x280:0x2C0].split("\0")[0][6:]
+        chip = securerom[0x200:0x240].split(b" ")[2][:-1]
+        kind = securerom[0x240:0x280].split(b"\0")[0]
+        version = securerom[0x280:0x2C0].split(b"\0")[0][6:]
         filename = f"SecureROM-{chip}-{version}-{kind}.dump"
         with open(filename, "wb") as f:
             f.write(securerom)
@@ -400,7 +404,11 @@ def dump_rom(device=None):
         print("SecureROM dumped to file:", filename)
 
 
-def decrypt_gid(device, arg, match=None):
+def decrypt_gid(
+    device: typing.Optional["Device"],
+    arg: str,
+    match_device: typing.Optional[str] = None,
+):
     """Decrypt a given byte string using the devices GID (CHIP group key)."""
 
     if not device:
@@ -410,17 +418,25 @@ def decrypt_gid(device, arg, match=None):
     dfu.release_device(device)
 
     if "PWND:[checkm8]" in serial_number:
-        pwned = usbexec.PwnedUSBDevice(match=match)
+        pwned = usbexec.PwnedUSBDevice(match_device=match_device)
         print(f"Decrypting with {pwned.platform.name()} GID key.")
         print(
             pwned.aes(
-                bytes.fromhex(arg), usbexec.AES_DECRYPT, usbexec.AES_GID_KEY
+                bytes.fromhex(arg),
+                usbexec.PwnedUSBDevice.AES_DECRYPT,
+                usbexec.PwnedUSBDevice.AES_GID_KEY,
             ).hex()
         )
     else:
         device = PwnedDFUDevice()
         print(f"Decrypting with S5L{device.config.cpid} GID key.")
-        print(device.aes_hex(arg, AES_DECRYPT, AES_GID_KEY))
+        print(
+            device.aes_hex(
+                arg,
+                usbexec.PwnedDFUDevice.AES_DECRYPT,
+                usbexec.PwnedDFUDevice.AES_GID_KEY,
+            )
+        )
 
 
 def encrypt_gid(device, arg):
@@ -437,13 +453,17 @@ def encrypt_gid(device, arg):
         print(f"Encrypting with {pwned.platform.name()} GID key.")
         print(
             pwned.aes(
-                bytes.fromhex(arg), usbexec.AES_ENCRYPT, usbexec.AES_GID_KEY
+                bytes.fromhex(arg),
+                usbexec.PwnedUSBDevice.AES_ENCRYPT,
+                usbexec.PwnedUSBDevice.AES_GID_KEY,
             ).hex()
         )
     else:
         device = PwnedDFUDevice()
         print(f"Encrypting with S5L{device.config.cpid} GID key.")
-        print(device.aes_hex(arg, AES_ENCRYPT, AES_GID_KEY))
+        print(
+            device.aes_hex(arg, PwnedDFUDevice.AES_ENCRYPT, PwnedDFUDevice.AES_GID_KEY)
+        )
 
 
 def decrypt_uid(device, arg):
@@ -460,13 +480,17 @@ def decrypt_uid(device, arg):
         print(f"Decrypting with {pwned.platform.name()} device-specific UID key.")
         print(
             pwned.aes(
-                bytes.fromhex(arg), usbexec.AES_DECRYPT, usbexec.AES_UID_KEY
+                bytes.fromhex(arg),
+                usbexec.PwnedUSBDevice.AES_DECRYPT,
+                usbexec.PwnedUSBDevice.AES_UID_KEY,
             ).hex()
         )
     else:
         device = PwnedDFUDevice()
         print("Decrypting with device-specific UID key.")
-        print(device.aes_hex(arg, AES_DECRYPT, AES_UID_KEY))
+        print(
+            device.aes_hex(arg, PwnedDFUDevice.AES_DECRYPT, PwnedDFUDevice.AES_UID_KEY)
+        )
 
 
 def encrypt_uid(device, arg):
@@ -483,13 +507,17 @@ def encrypt_uid(device, arg):
         print(f"Encrypting with {pwned.platform.name()} device-specific UID key.")
         print(
             pwned.aes(
-                bytes.fromhex(arg), usbexec.AES_ENCRYPT, usbexec.AES_UID_KEY
+                bytes.fromhex(arg),
+                usbexec.PwnedUSBDevice.AES_ENCRYPT,
+                usbexec.PwnedUSBDevice.AES_UID_KEY,
             ).hex()
         )
     else:
         device = PwnedDFUDevice()
         print("Encrypting with device-specific UID key.")
-        print(device.aes_hex(arg, AES_ENCRYPT, AES_UID_KEY))
+        print(
+            device.aes_hex(arg, PwnedDFUDevice.AES_ENCRYPT, PwnedDFUDevice.AES_UID_KEY)
+        )
 
 
 def list_devices():
@@ -524,7 +552,7 @@ def list_devices():
 
 def repair_heap(device=None, match_device=None):
     if not device:
-        device = dfu.acquire_device(match=match_device)
+        device = dfu.acquire_device(match_device=match_device)
     serial = get_serial(device.serial_number)
     if serial.pwned:
         pwned = usbexec.PwnedUSBDevice()
@@ -560,9 +588,11 @@ def repair_heap(device=None, match_device=None):
         print("Device not in pwndfu mode!")
 
 
-def patch_sigchecks(device=None, match_device=None):
+def patch_sigchecks(
+    device: typing.Optional["Device"] = None, match_device: typing.Optional[str] = None
+) -> None:
     if not device:
-        device = dfu.acquire_device(match=match_device)
+        device = dfu.acquire_device(match_device=match_device)
     serial = get_serial(device.serial_number)
     if serial.pwned:
         pwned = usbexec.PwnedUSBDevice()
@@ -587,7 +617,7 @@ def patch_sigchecks(device=None, match_device=None):
             0, trampoline_base + trampoline_offset + 0x30
         )  # offset of _inv_tlbi
         result = pwned.read_memory_uint32(sigcheck_addr)
-        # print(f"DEBUG: pwned.read_memory_uint32(sigcheck_addr)): {hex(result)}")
+
         if result == sigcheck_patch:
             print("Successfully patched signature checks!")
         else:
@@ -596,7 +626,7 @@ def patch_sigchecks(device=None, match_device=None):
         print("Device not in pwndfu mode!")
 
 
-def boot(device=None):
+def boot(device: typing.Optional["Device"] = None) -> None:
     if not device:
         device = dfu.acquire_device()
 
@@ -772,7 +802,7 @@ def remove_24kpwn(device=None):
     device.flash_nor(nor_data.dump())
 
 
-def remove_alloc8(device=None):
+def remove_alloc8(device: typing.Optional["Device"] = None) -> None:
     """Remove alloc8 exploit from a device."""
 
     if device is None:

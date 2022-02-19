@@ -110,11 +110,11 @@ class DevicePlatform:
             self.recovery_load_base = 0x800000000
             self.heap_base = 0
             self.heap_offset = 0
-            self.trampoline_base = 0x00000001800c0000
+            self.trampoline_base = 0x00000001800C0000
             self.trampoline_offset = 0
             self.page_offset = 0
 
-    def name(self):
+    def name(self) -> str:
         if 0x8720 <= self.cpid <= 0x8960:
             return f"s5l{self.cpid}xsi"
         elif self.cpid in [0x7002, 0x8000, 0x8001, 0x8003]:

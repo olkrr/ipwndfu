@@ -1,28 +1,24 @@
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import hashlib
 import io
 import os
 import platform
 import sys
 import tarfile
+import typing
 from typing import Any, Tuple, Union
 
 
+@dataclasses.dataclass
 class VersionConfig:
-    def __init__(
-        self,
-        version: str,
-        bottle: str,
-        bottle_sha256: str,
-        dylib_patches: list[Union[Tuple[int, bytes], Any]],
-        dylib_sha256: str,
-    ) -> None:
-        self.version = version
-        self.bottle = bottle
-        self.bottle_sha256 = bottle_sha256
-        self.dylib_patches = dylib_patches
-        self.dylib_sha256 = dylib_sha256
+    version: str
+    bottle: str
+    bottle_sha256: str
+    dylib_patches: list[Union[Tuple[int, bytes], Any]]
+    dylib_sha256: str
 
 
 def from_hex(hex_str: str) -> bytes:
@@ -87,7 +83,9 @@ DYLIB_PATH_FORMAT = os.path.join(BINARY_PATH, "%s.dylib")
 DYLIB_NAME = "libusb-1.0.0.dylib"
 
 
-def apply_patches(binary: bytes, patches):
+def apply_patches(
+    binary: bytes, patches: typing.Sequence[typing.Tuple[int, bytes]]
+) -> bytes:
     for (offset, data) in patches:
         binary = binary[:offset] + data + binary[offset + len(data) :]
     return binary
@@ -105,22 +103,20 @@ def libusb1_path_internal() -> Union[os.PathLike[str], str, None]:
     for config in configs:
         if version.startswith(config.version):
             path = DYLIB_PATH_FORMAT % config.bottle
-            try:
-                f = open(path, "rb")
+
+            with contextlib.suppress(IOError), open(path, "rb") as f:
                 dylib = f.read()
                 f.close()
                 if hashlib.sha256(dylib).hexdigest() == config.dylib_sha256:
                     return path
                 print("WARNING: SHA256 hash of existing dylib does not match.")
-            except IOError:
-                pass
 
-            f = open(BOTTLE_PATH_FORMAT % config.bottle, "rb")
-            bottle = f.read()
-            f.close()
-            if hashlib.sha256(bottle).hexdigest() != config.bottle_sha256:
-                print("ERROR: SHA256 hash of bottle does not match.")
-                sys.exit(1)
+            with open(BOTTLE_PATH_FORMAT % config.bottle, "rb") as f:
+                bottle = f.read()
+                f.close()
+                if hashlib.sha256(bottle).hexdigest() != config.bottle_sha256:
+                    print("ERROR: SHA256 hash of bottle does not match.")
+                    sys.exit(1)
 
             tar = tarfile.open(fileobj=io.BytesIO(bottle))
             for member in tar.getmembers():

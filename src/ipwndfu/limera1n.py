@@ -204,7 +204,7 @@ def generate_payload(constants, exploit_lr):
     )
 
 
-def exploit():
+def exploit() -> None:
     print("*** based on limera1n exploit (heap overflow) by geohot ***")
 
     device = dfu.acquire_device()
