@@ -2,6 +2,8 @@ import copy
 import struct
 import sys
 
+from ipwndfu.nor import NorData
+
 alloc8_constants_359_3 = [
     0x84034000,  # 1 - MAIN_STACK_ADDRESS
     0x544,  # 2 - clean_invalidate_data_cache
@@ -59,14 +61,14 @@ alloc8_constants_359_3_2 = [
 ]
 
 
-def empty_img3(size):
+def empty_img3(size: int) -> bytes:
     assert size >= 20
-    return struct.pack("<4s3I4s", "Img3"[::-1], size, 0, 0, "zero"[::-1]) + "\x00" * (
+    return struct.pack("<4s3I4s", "Img3"[::-1], size, 0, 0, "zero"[::-1]) + b"\x00" * (
         size - 20
     )
 
 
-def exploit(nor, version):
+def exploit(nor: NorData, version: str) -> NorData:
     if version == "359.3":
         constants = alloc8_constants_359_3
         exceptions = [0x5620, 0x5630]
@@ -122,7 +124,7 @@ def exploit(nor, version):
     return new_nor
 
 
-def remove_exploit(nor):
+def remove_exploit(nor: NorData) -> NorData:
     assert len(nor.images) >= 700
 
     new_nor = copy.deepcopy(nor)

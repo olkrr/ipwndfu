@@ -2,6 +2,7 @@
 
 import sys
 import time
+import typing
 from contextlib import suppress
 from typing import TYPE_CHECKING, Optional
 
@@ -52,12 +53,20 @@ def acquire_device(
     return None
 
 
+def assert_acquire_device(timeout: float = 5.0, match: Optional[str] = None,) -> "Device":
+    device = acquire_device(timeout = timeout, match = match)
+    if not device:
+        raise ConnectionRefusedError()
+
+    return device
+
+
 def release_device(device: "Device") -> None:
     """Terminates a DFU session."""
     usb.util.dispose_resources(device)
 
 
-def reset_counters(device: "Device"):
+def reset_counters(device: "Device") -> None:
     assert device.ctrl_transfer(0x21, 4, 0, 0, 0, 1000) == 0
 
 
@@ -67,7 +76,7 @@ def usb_reset(device: "Device") -> None:
         device.reset()
 
 
-def send_data(device: "Device", data: bytes):
+def send_data(device: "Device", data: bytes) -> None:
     """Send a payload to the device."""
     index = 0
     while index < len(data):
@@ -91,7 +100,7 @@ def get_data(device: "Device", amount: int) -> bytes:
     return data
 
 
-def request_image_validation(device: "Device"):
+def request_image_validation(device: "Device") -> None:
     assert device.ctrl_transfer(0x21, 1, 0, 0, "", 1000) == 0
     device.ctrl_transfer(0xA1, 3, 0, 0, 6, 1000)
     device.ctrl_transfer(0xA1, 3, 0, 0, 6, 1000)

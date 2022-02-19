@@ -3,6 +3,7 @@ from __future__ import annotations
 import binascii
 import dataclasses
 import struct
+import typing
 
 from ipwndfu.dfuexec import PwnedDFUDevice
 from ipwndfu.utilities import aes_decrypt
@@ -24,7 +25,7 @@ class Image3:
     type: bytes
     tags: list[Image3Tag]
 
-    def __init__(self, data):
+    def __init__(self: "Image3", data: bytes) -> None:
         (
             self.magic,
             self.total_size,
@@ -51,7 +52,7 @@ class Image3:
                 break
 
     @staticmethod
-    def create_image3_from_tags(img_type, tags):
+    def create_image3_from_tags(img_type, tags) -> bytes:
         data_size = 0
         signed_size = 0
         for tag in tags:
@@ -81,7 +82,7 @@ class Image3:
                 matches.append(tag)
         return matches
 
-    def get_keybag(self):
+    def get_keybag(self) -> typing.Optional[bytes]:
         keybags = self.get_tags("KBAG"[::-1])
         for tag in keybags:
             (kbag_type, aes_type) = struct.unpack("<2I", tag.tag_data[:8])
@@ -89,22 +90,25 @@ class Image3:
                 return tag.tag_data[8 : 8 + 48]
         return None
 
-    def get_payload(self):
+    def get_payload(self: "Image3") -> typing.Optional[bytes]:
         data = self.get_tags(b"DATA"[::-1])
         if len(data) == 1:
             return data[0].tag_data
+        return None
 
-    def get_decrypted_payload(self):
+    def get_decrypted_payload(self: "Image3") -> bytes:
         keybag = self.get_keybag()
         device = PwnedDFUDevice()
         decrypted_keybag = device.decrypt_keybag(keybag)
+        payload = self.get_payload()
+        assert payload
         return aes_decrypt(
-            self.get_payload(),
+            payload,
             binascii.hexlify(decrypted_keybag[:16]),
             binascii.hexlify(decrypted_keybag[16:]),
         )
 
-    def shrink24_kpwn_certificate(self):
+    def shrink24_kpwn_certificate(self) -> None:
         for i in range(len(self.tags)):
             tag = self.tags[i]
             if tag.tag_magic == b"CERT"[::-1] and len(tag.tag_data) >= 3072:
@@ -114,7 +118,7 @@ class Image3:
                 self.tags[i] = Image3Tag(b"CERT"[::-1], 12 + len(data), len(data), data)
                 break
 
-    def new_image3(self, decrypted=True):
+    def new_image3(self, decrypted: bool = True) -> bytes:
         type_tag = self.get_tags(b"TYPE"[::-1])
         assert len(type_tag) == 1
         vers_tag = self.get_tags(b"VERS"[::-1])
@@ -132,18 +136,17 @@ class Image3:
         cert_tag = self.get_tags(b"CERT"[::-1])
         assert len(cert_tag) <= 1
 
-        (tag_magic, tag_total_size, tag_data_size, tag_data) = data_tag[0]
         if len(kbag_tag) > 0 and decrypted:
             new_tag_data = self.get_decrypted_payload()
             kbag_tag = []
         else:
-            new_tag_data = tag_data
-        assert len(tag_data) == len(new_tag_data)
+            new_tag_data = kbag_tag[0].tag_data
+        assert len(kbag_tag[0].tag_data) == len(new_tag_data)
 
         return Image3.create_image3_from_tags(
             self.type,
             type_tag
-            + [Image3Tag(tag_magic, tag_total_size, tag_data_size, new_tag_data)]
+            + [Image3Tag(kbag_tag[0].tag_magic, kbag_tag[0].tag_total_size, kbag_tag[0].tag_data_size, new_tag_data)]
             + vers_tag
             + sepo_tag
             + bord_tag

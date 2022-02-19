@@ -6,7 +6,7 @@ import struct
 from ipwndfu import image3
 
 
-def exploit(img3, securerom):
+def exploit(img3: bytes, securerom: bytes) -> bytes:
     with open("bin/24Kpwn-shellcode.bin", "rb") as f:
         shellcode = f.read()
     max_shellcode_length = 1024
@@ -64,7 +64,7 @@ def exploit(img3, securerom):
     return img3
 
 
-def remove_exploit(img3):
+def remove_exploit(img3: bytes) -> bytes:
     assert len(img3) > 0x24000
     assert img3[16:20] == "illb"[::-1]
 

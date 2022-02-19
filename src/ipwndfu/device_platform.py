@@ -114,7 +114,7 @@ class DevicePlatform:
             self.trampoline_offset = 0
             self.page_offset = 0
 
-    def name(self):
+    def name(self) -> str:
         if 0x8720 <= self.cpid <= 0x8960:
             return f"s5l{self.cpid}xsi"
         elif self.cpid in [0x7002, 0x8000, 0x8001, 0x8003]:

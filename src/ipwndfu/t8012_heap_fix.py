@@ -1,7 +1,7 @@
 from ipwndfu.usbexec import PwnedUSBDevice
 
 
-def fix_heap():
+def fix_heap() -> None:
     d = PwnedUSBDevice()
 
     calculate_block_checksum = 0x10000D4E8

@@ -5,6 +5,7 @@ import hashlib
 import struct
 import sys
 import time
+import typing
 from contextlib import suppress
 
 import usb
@@ -84,8 +85,10 @@ configs = [
 
 
 class PwnedDFUDevice:
-    def __init__(self):
-        device = dfu.acquire_device()
+    config: PwnedDeviceConfig
+
+    def __init__(self) -> None:
+        device = dfu.assert_acquire_device()
         self.identifier = device.serial_number
         dfu.release_device(device)
 
@@ -101,7 +104,6 @@ class PwnedDFUDevice:
             )
             sys.exit(1)
 
-        self.config = None
         for config in configs:
             if f"SRTG:[iBoot-{config.version}]" in self.identifier:
                 self.config = config
@@ -112,7 +114,7 @@ class PwnedDFUDevice:
             )
             sys.exit(1)
 
-    def ecid_string(self):
+    def ecid_string(self) -> str:
         tokens = self.identifier.split()
         for token in tokens:
             if token.startswith("ECID:"):
@@ -120,8 +122,8 @@ class PwnedDFUDevice:
         print("ERROR: ECID is missing from USB serial number string.")
         sys.exit(1)
 
-    def execute(self, cmd, receive_length):
-        device = dfu.acquire_device()
+    def execute(self, cmd, receive_length) -> typing.Tuple[int, bytes]:
+        device = dfu.assert_acquire_device()
         assert self.identifier == device.serial_number
 
         dfu.reset_counters(device)
@@ -131,7 +133,7 @@ class PwnedDFUDevice:
 
         time.sleep(0.5)
 
-        device = dfu.acquire_device()
+        device = dfu.assert_acquire_device()
         assert self.identifier == device.serial_number
 
         required_length = 0x8 + receive_length
@@ -147,7 +149,7 @@ class PwnedDFUDevice:
         assert exec_cleared == 0
         return retval, received[8 : 8 + receive_length]
 
-    def securerom_dump(self):
+    def securerom_dump(self) -> bytes:
         securerom = self.read_memory(self.config.rom_address, self.config.rom_size)
         if hashlib.sha256(securerom).hexdigest() != self.config.rom_sha256:
             print(
@@ -156,7 +158,7 @@ class PwnedDFUDevice:
             sys.exit(1)
         return securerom
 
-    def aes(self, data, action, key):
+    def aes(self, data: bytes, action, key) -> bytes:
         if len(data) % AES_BLOCK_SIZE != 0:
             print(
                 "ERROR: Length of data for AES encryption/decryption must be a multiple of %s."
@@ -178,7 +180,7 @@ class PwnedDFUDevice:
         (retval, received) = self.execute(cmd + data, len(data))
         return received[: len(data)]
 
-    def aes_hex(self, hexdata, action, key):
+    def aes_hex(self, hexdata, action, key) -> bytes:
         if len(hexdata) % 32 != 0:
             print(
                 "ERROR: Length of hex data for AES encryption/decryption must be a multiple of %s."
@@ -188,7 +190,7 @@ class PwnedDFUDevice:
 
         return binascii.hexlify(self.aes(binascii.unhexlify(hexdata), action, key))
 
-    def read_memory(self, address, length):
+    def read_memory(self, address: int, length: int) -> bytes:
         (retval, data) = self.execute(
             struct.pack(
                 "<4I",
@@ -201,7 +203,7 @@ class PwnedDFUDevice:
         )
         return data
 
-    def write_memory(self, address, data):
+    def write_memory(self, address: int, data: bytes) -> bytes:
         (retval, data) = self.execute(
             struct.pack(
                 f"<4I{len(data)}s",
@@ -215,7 +217,7 @@ class PwnedDFUDevice:
         )
         return data
 
-    def nor_dump(self, save_backup):
+    def nor_dump(self, save_backup: bool) -> bytes:
         (bdev, empty) = self.execute(
             struct.pack(
                 "<2I5s",
@@ -264,7 +266,7 @@ class PwnedDFUDevice:
 
         return nor
 
-    def boot_ibss(self):
+    def boot_ibss(self) -> None:
         print("Sending i_bss.")
         if self.config.cpid != "8920":
             print("ERROR: Boot i_bss is currently only supported on iPhone 3GS.")
@@ -311,7 +313,7 @@ class PwnedDFUDevice:
             decrypted_ibss[64:], n88ap_i_bss_435_patches
         )
 
-        device = dfu.acquire_device()
+        device = dfu.assert_acquire_device()
         assert self.identifier == device.serial_number
         dfu.reset_counters(device)
         dfu.request_image_validation(device)
@@ -319,7 +321,7 @@ class PwnedDFUDevice:
 
         time.sleep(0.5)
 
-        device = dfu.acquire_device()
+        device = dfu.assert_acquire_device()
         assert self.identifier == device.serial_number
         dfu.send_data(device, patched_ibss)
         dfu.request_image_validation(device)
@@ -328,10 +330,10 @@ class PwnedDFUDevice:
         time.sleep(0.5)
 
         print("Waiting for i_bss to enter Recovery Mode.")
-        device = recovery.acquire_device()
+        device = recovery.assert_acquire_device()
         recovery.release_device(device)
 
-    def flash_nor(self, nor):
+    def flash_nor(self, nor: bytes) -> None:
         self.boot_ibss()
         print("Sending iBSS payload to flash NOR.")
         max_shellcode_length = 132
@@ -339,9 +341,9 @@ class PwnedDFUDevice:
         with open("bin/ibss-flash-nor-shellcode.bin", "rb") as f:
             payload = f.read()
         assert len(payload) <= max_shellcode_length
-        payload += "\x00" * (max_shellcode_length - len(payload)) + nor
+        payload += b"\x00" * (max_shellcode_length - len(payload)) + nor
 
-        device = recovery.acquire_device()
+        device = recovery.assert_acquire_device()
         assert "CPID:8920" in device.serial_number
         recovery.send_data(device, payload)
         with suppress(usb.core.USBError):
@@ -353,17 +355,16 @@ class PwnedDFUDevice:
             "If screen is not red, NOR was flashed successfully and device will reboot."
         )
 
-    def decrypt_keybag(self, keybag):
+    def decrypt_keybag(self, keybag) -> bytes:
         keybag_length = 48
         assert len(keybag) == keybag_length
 
         keybag_filename = f"aes-keys/S5L{self.config.cpid}-firmware"
-        data = None
         try:
             with open(keybag_filename, "rb") as f:
                 data = f.read()
         except IOError:
-            data = str()
+            data = bytes()
         assert len(data) % 2 * keybag_length == 0
 
         for i in range(0, len(data), 2 * keybag_length):
@@ -373,7 +374,7 @@ class PwnedDFUDevice:
         device = PwnedDFUDevice()
         decrypted_keybag = device.aes(keybag, AES_DECRYPT, AES_GID_KEY)
 
-        with open(keybag_filename, "a") as f:
+        with open(keybag_filename, "ab") as f:
             f.write(keybag + decrypted_keybag)
 
         return decrypted_keybag

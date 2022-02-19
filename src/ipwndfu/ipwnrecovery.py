@@ -9,7 +9,7 @@ import usb
 from ipwndfu import recovery
 
 
-def print_help():
+def print_help() -> None:
     print("USAGE: ipwnrecovery [options]")
     print("Interact with an iOS device in Recovery Mode.\n")
     print("Basic options:")

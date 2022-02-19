@@ -4,6 +4,10 @@ import time
 import libusbfinder
 import usb  # pyusb: use 'pip install pyusb' to install this module
 import usb.backend.libusb1
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from usb.core import Device
 
 MAX_PACKET_SIZE = 0x4000
 
@@ -23,6 +27,13 @@ def acquire_device(timeout=10):
         time.sleep(0.1)
     print("ERROR: No Apple device in Recovery Mode 0x1281 detected. Exiting.")
     sys.exit(1)
+
+
+def assert_acquire_device(timeout=10) -> "Device":
+    device = acquire_device(timeout=timeout)
+    if not device:
+        raise ConnectionRefusedError()
+    return device
 
 
 def release_device(device):
