@@ -250,8 +250,8 @@ class PwnedUSBDevice:
     def page_offset(self):
         return self.platform.page_offset
 
-    def tlbi(self):
-        return self.platform.tlbi
+    def other_tlbi(self):
+        return self.platform.other_tlbi
 
     def usb_serial_number(self, key):
         for pair in self.serial_number.split(" "):

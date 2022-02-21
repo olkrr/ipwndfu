@@ -45,6 +45,9 @@ constants:
     dfu_load_base: 0x800000000
     recovery_image_base: 0x1800B0000
     recovery_load_base: 0x800000000
+    trampoline_base: 0x1800A8000
+    page_offset: 0x400
+    ttbr0_base: 0x1800A0000
   - &dfu_load_t8012_t8015
     dfu_image_base: 0x18001C000
     dfu_load_base: 0x800000000
@@ -55,12 +58,16 @@ constants:
     trampoline_base: 0x180018000
     trampoline_offset: 0x620
     page_offset: 0x400
+    ttbr0_base: 0x18000c000
   - &dfu_load_t800x
     dfu_image_base: 0x180380000
     dfu_load_base: 0x180000000
     recovery_image_base: 0x83D7F7000
     recovery_load_base: 0x800000000
-    trampoline_base: 0x00000001800c0000
+    trampoline_base: 0x1800c0000
+    page_offset: 0x400
+    ttbr0_base: 0x1800C8000
+    other_tlbi: YES
 
 
 modern_platforms:
@@ -719,15 +726,19 @@ modern_platforms:
   sram_base: 0x180000000
   sram_size: 0x400000
   dram_base: 0x800000000
-  demotion_reg: 0x20e02a000
+  demotion_reg: 0x20E02A000
 
   dfu_image_base: 0x180380000
   dfu_load_base: 0x180000000
   recovery_image_base: 0x83D7F7000
   recovery_load_base: 0x800000000
 
-  sigcheck_addr: 0x100005be8
-  sigcheck_patch: 0xd2800000
+  trampoline_base: 0x1800C0000
+  ttbr0_base: 0x1800C5000
+  other_tlbi: YES
+
+  sigcheck_addr: 0x100005BE8
+  sigcheck_patch: 0xD2800000
 
   usb:
     <<: *usb_magic_64

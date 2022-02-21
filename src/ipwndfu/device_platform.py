@@ -17,8 +17,8 @@ class USBConstants:
 
     @property
     def constants(self) -> typing.List[int]:
-        return list(astuple(self))
-
+        return [ self.load_address, self.exec_magic, self.done_magic, self.memc_magic,
+                 self.mems_magic, self.usb_core_do_io]
 
 @dataclass
 class DevicePlatform:
@@ -48,6 +48,8 @@ class DevicePlatform:
     trampoline_base: int = 0
     trampoline_offset: int = 0
     page_offset: int = 0
+    ttbr0_base: int = 0
+    other_tlbi: bool = False
     heap_state: int = 0
     heap_write_hash: int = 0
     heap_check_all: int = 0

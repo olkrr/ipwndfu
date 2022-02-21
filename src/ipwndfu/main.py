@@ -575,9 +575,17 @@ def patch_sigchecks(device=None, match_device=None):
         trampoline_offset = pwned.trampoline_offset()
         ttbr0_base = pwned.ttbr0_base()
         page_offset = pwned.page_offset()
-        tlbi = pwned.tlbi()
-        addr_list = [ttbr0_base, page_offset, tlbi]
-        if sigcheck_addr == 0 or sigcheck_patch == 0 or trampoline_base == 0:
+        other_tlbi = pwned.other_tlbi()
+        addr_list = [ttbr0_base, page_offset, other_tlbi]
+        if any(
+            addr == 0
+            for addr in [
+                sigcheck_addr,
+                sigcheck_patch,
+                trampoline_base,
+                ttbr0_base,
+            ]
+        ):
             print("Device not supported for --patch-sigchecks")
             return
         if pwned.read_memory_uint32(sigcheck_addr) == sigcheck_patch:
