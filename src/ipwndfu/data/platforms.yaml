@@ -472,7 +472,7 @@ modern_platforms:
 
   heap_check_all: 0x10000db88
   heap_state: 0x180008b60
-  heap_write_hash: 0x10000d4e8
+  calculate_block_checksum: 0x10000d4e8
 
   <<: *dfu_load_t8012_t8015
 
@@ -530,7 +530,7 @@ modern_platforms:
 
   heap_check_all: 0x10000db98
   heap_state: 0x1800086a0
-  heap_write_hash: 0x10000d4ec
+  calculate_block_checksum: 0x10000d4ec
 
   <<: *dfu_load_t8012_t8015
 
@@ -640,7 +640,7 @@ modern_platforms:
 
   heap_check_all: 0x0
   heap_state: 0x0
-  heap_write_hash: 0x0
+  calculate_block_checksum: 0x0
 
   <<: *dfu_load_s895x
 
@@ -736,6 +736,10 @@ modern_platforms:
   trampoline_base: 0x1800C0000
   ttbr0_base: 0x1800C5000
   other_tlbi: YES
+
+  heap_check_all: 0x10000db98
+  heap_state: 0x1800086a0
+  calculate_block_checksum: 0x10000d4ec
 
   sigcheck_addr: 0x100005BE8
   sigcheck_patch: 0xD2800000

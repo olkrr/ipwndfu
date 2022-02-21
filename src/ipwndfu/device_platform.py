@@ -51,7 +51,7 @@ class DevicePlatform:
     ttbr0_base: int = 0
     other_tlbi: bool = False
     heap_state: int = 0
-    heap_write_hash: int = 0
+    calculate_block_checksum: int = 0
     heap_check_all: int = 0
     gadgets: typing.Dict[str, int] = field(default_factory=dict)
     exploit_configs: typing.Dict[str, dict] = field(default_factory=dict)

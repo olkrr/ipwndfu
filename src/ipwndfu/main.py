@@ -531,7 +531,7 @@ def repair_heap(device=None, match_device=None):
         heap_base = pwned.heap_base()
         heap_offset = pwned.heap_offset()
         heap_state = pwned.platform.heap_state
-        heap_write_hash = pwned.platform.heap_write_hash
+        calculate_block_checksum = pwned.platform.calculate_block_checksum
         heap_check_all = pwned.platform.heap_check_all
         if any(
             addr == 0
@@ -539,7 +539,7 @@ def repair_heap(device=None, match_device=None):
                 heap_base,
                 heap_offset,
                 heap_state,
-                heap_write_hash,
+                calculate_block_checksum,
                 heap_check_all,
             ]
         ):
@@ -551,10 +551,10 @@ def repair_heap(device=None, match_device=None):
         pwned.write_memory(heap_base + heap_offset + 0x80, block2)
         pwned.write_memory(heap_base + heap_offset + 0x100, block2)
         pwned.write_memory(heap_base + heap_offset + 0x180, block2)
-        pwned.execute(0, heap_write_hash, heap_base + heap_offset)
-        pwned.execute(0, heap_write_hash, heap_base + heap_offset + 0x80)
-        pwned.execute(0, heap_write_hash, heap_base + heap_offset + 0x100)
-        pwned.execute(0, heap_write_hash, heap_base + heap_offset + 0x180)
+        pwned.execute(0, calculate_block_checksum, heap_base + heap_offset)
+        pwned.execute(0, calculate_block_checksum, heap_base + heap_offset + 0x80)
+        pwned.execute(0, calculate_block_checksum, heap_base + heap_offset + 0x100)
+        pwned.execute(0, calculate_block_checksum, heap_base + heap_offset + 0x180)
         pwned.execute(0, heap_check_all)
         dfu.request_image_validation(device)
         dfu.release_device(device)
@@ -625,7 +625,7 @@ def boot(device=None):
     else:
         heap_base = 0x1801E8000
         heap_write_offset = 0x5000
-        heap_write_hash = 0x10000D4EC
+        calculate_block_checksum = 0x10000D4EC
         heap_check_all = 0x10000DB98
         heap_state = 0x1800086A0
         nand_boot_jump = 0x10000188C
@@ -641,10 +641,10 @@ def boot(device=None):
         device.write_memory(heap_base + heap_write_offset + 0x80, block2)
         device.write_memory(heap_base + heap_write_offset + 0x100, block2)
         device.write_memory(heap_base + heap_write_offset + 0x180, block2)
-        device.execute(0, heap_write_hash, heap_base + heap_write_offset)
-        device.execute(0, heap_write_hash, heap_base + heap_write_offset + 0x80)
-        device.execute(0, heap_write_hash, heap_base + heap_write_offset + 0x100)
-        device.execute(0, heap_write_hash, heap_base + heap_write_offset + 0x180)
+        device.execute(0, calculate_block_checksum, heap_base + heap_write_offset)
+        device.execute(0, calculate_block_checksum, heap_base + heap_write_offset + 0x80)
+        device.execute(0, calculate_block_checksum, heap_base + heap_write_offset + 0x100)
+        device.execute(0, calculate_block_checksum, heap_base + heap_write_offset + 0x180)
         device.execute(0, heap_check_all)
         print("Heap repaired.")
 
