@@ -244,8 +244,14 @@ class PwnedUSBDevice:
     def trampoline_offset(self):
         return self.platform.trampoline_offset
 
+    def ttbr0_base(self):
+        return self.platform.ttbr0_base
+
     def page_offset(self):
         return self.platform.page_offset
+
+    def tlbi(self):
+        return self.platform.tlbi
 
     def usb_serial_number(self, key):
         for pair in self.serial_number.split(" "):

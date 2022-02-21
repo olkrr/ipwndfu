@@ -571,27 +571,26 @@ def patch_sigchecks(device=None, match_device=None):
         pwned = usbexec.PwnedUSBDevice()
         sigcheck_addr = pwned.platform.sigcheck_addr
         sigcheck_patch = pwned.platform.sigcheck_patch
-        result = pwned.read_memory_uint32(sigcheck_addr)
-        if any(addr == 0 for addr in [sigcheck_addr, sigcheck_patch]):
-            print("Device not supported for --patch-sigchecks")
-            return
-        if result == sigcheck_patch:
-            print("Signature checks are already patched out!")
-            return
         trampoline_base = pwned.trampoline_base()
         trampoline_offset = pwned.trampoline_offset()
+        ttbr0_base = pwned.ttbr0_base()
         page_offset = pwned.page_offset()
-        addr_list = [page_offset]
+        tlbi = pwned.tlbi()
+        addr_list = [ttbr0_base, page_offset, tlbi]
+        if sigcheck_addr == 0 or sigcheck_patch == 0 or trampoline_base == 0:
+            print("Device not supported for --patch-sigchecks")
+            return
+        if pwned.read_memory_uint32(sigcheck_addr) == sigcheck_patch:
+            print("Signature checks are already patched out!")
+            return
         shellcode = checkm8.prepare_shellcode("patch_ttbr_page_arm64", addr_list)
         pwned.write_memory(trampoline_base + trampoline_offset, shellcode)
         pwned.execute(0, trampoline_base + trampoline_offset)
         pwned.write_memory_uint32(sigcheck_addr, sigcheck_patch)
         pwned.execute(
-            0, trampoline_base + trampoline_offset + 0x30
+            0, trampoline_base + trampoline_offset + 0x48
         )  # offset of _inv_tlbi
-        result = pwned.read_memory_uint32(sigcheck_addr)
-
-        if result == sigcheck_patch:
+        if pwned.read_memory_uint32(sigcheck_addr) == sigcheck_patch:
             print("Successfully patched signature checks!")
         else:
             print("Failed to patch signature checks!")
