@@ -732,13 +732,15 @@ modern_platforms:
   dfu_load_base: 0x180000000
   recovery_image_base: 0x83D7F7000
   recovery_load_base: 0x800000000
+  heap_base: 0x180100000
+  heap_offset: 0x7300
 
   trampoline_base: 0x1800C0000
   ttbr0_base: 0x1800C5000
   other_tlbi: YES
 
   heap_check_all: 0x10000db98
-  heap_state: 0x1800086a0
+  heap_state: 0x180086a40
   calculate_block_checksum: 0x10000d4ec
 
   sigcheck_addr: 0x100005BE8
