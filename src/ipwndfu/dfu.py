@@ -38,7 +38,7 @@ def acquire_device(
     while not once or time.time() - start < timeout:
         once = True
         for device in usb.core.find(
-            find_all=True, device._langids = (1033,) idVendor=0x5AC, idProduct=0x1227, backend=backend, 
+            find_all=True, device._langids = (1033,), idVendor=0x5AC, idProduct=0x1227, backend=backend, 
         ):
             if match is not None and match not in device.serial_number:
                 continue
